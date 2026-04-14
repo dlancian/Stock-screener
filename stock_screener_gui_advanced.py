@@ -102,13 +102,16 @@ def get_financial_data(ticker_symbol):
             pass
         
         if not debt_to_equity or debt_to_equity > 100:
-            debt_to_equity = info.get('debtToEquity', None)
+            debt_to_equity = info.get('debtToEquity', 0)
+        
+        if not debt_to_equity or debt_to_equity > 100:
+            debt_to_equity = 0
         
         # Dividend yield - yfinance returns as percentage (e.g., 2.5 for 2.5%), default to 0 if not found
         dividend_yield = info.get('dividendYield', 0) or 0
         
-        # P/E ratio and Forward P/E
-        pe_ratio = info.get('trailingPE', None)
+        # P/E ratio - default to 0 if not found
+        pe_ratio = info.get('trailingPE', 0) or 0
         forward_pe = info.get('forwardPE', None)
         
         # Net Profit Margin
