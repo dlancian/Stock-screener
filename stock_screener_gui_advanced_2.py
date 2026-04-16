@@ -72,40 +72,42 @@ def calculate_rsi(prices, period=14):
     return rsi.iloc[-1] if len(rsi) > 0 else None
 
 
-def calc_yoy_growth(income_stmt, row_keys):
+def calc_yoy_growth(annual_stmt, row_keys):
     """
-    Calculate YoY % growth for a given metric using quarterly income statement.
-    Compares TTM (last 4 quarters) vs prior year TTM (quarters 5-8).
-    Returns None if insufficient data or prior year total is zero / negative.
+    Calculate YoY % growth using the annual income statement.
+    Compares the most recent fiscal year (column 0) vs the prior year (column 1).
+    yfinance annual income_stmt reliably returns 4 years of data, so this is
+    far more robust than trying to sum 8 quarters from quarterly_income_stmt
+    (which only provides ~4 quarters).
     row_keys: list of possible row label names to try in order.
     """
     try:
-        if income_stmt is None or income_stmt.empty:
+        if annual_stmt is None or annual_stmt.empty:
             return None
 
         # Find whichever row key exists
         key = None
         for k in row_keys:
-            if k in income_stmt.index:
+            if k in annual_stmt.index:
                 key = k
                 break
         if key is None:
             return None
 
-        row = income_stmt.loc[key]
-        # Drop NaN and convert to float
+        row = annual_stmt.loc[key]
+        # Drop NaN and convert to float, keeping column order (newest first)
         values = [float(v) for v in row.values if v is not None and not pd.isna(v)]
 
-        if len(values) < 8:
+        if len(values) < 2:
             return None
 
-        ttm = sum(values[:4])        # most recent 4 quarters
-        prior = sum(values[4:8])     # same 4 quarters one year ago
+        current_year = values[0]   # most recent fiscal year
+        prior_year   = values[1]   # one year prior
 
-        if prior == 0:
+        if prior_year == 0:
             return None
 
-        growth = ((ttm - prior) / abs(prior)) * 100
+        growth = ((current_year - prior_year) / abs(prior_year)) * 100
         return round(growth, 2)
     except Exception:
         return None
@@ -191,14 +193,14 @@ def get_financial_data(ticker_symbol):
             return None
         rsi = calculate_rsi(hist['Close'])
 
-        # ── Quarterly income statement (shared for NI TTM + YoY growth) ──────
+        # ── Quarterly income statement (Net Income TTM only) ───────────────
         quarterly_income = None
         try:
             quarterly_income = ticker.quarterly_income_stmt
         except Exception:
             pass
 
-        # Net Income TTM
+        # Net Income TTM (sum of last 4 quarters)
         net_income_ttm_total = None
         try:
             if quarterly_income is not None and not quarterly_income.empty:
@@ -220,15 +222,24 @@ def get_financial_data(ticker_symbol):
         except Exception:
             pass
 
+        # ── Annual income statement (YoY growth: most recent vs prior year) ──
+        # ticker.income_stmt returns columns newest->oldest, typically 4 years.
+        # Much more reliable than aggregating 8 quarterly rows (only ~4 available).
+        annual_income = None
+        try:
+            annual_income = ticker.income_stmt
+        except Exception:
+            pass
+
         # ── YoY % Change: Total Revenue ──────────────────────────────────────
         revenue_yoy = calc_yoy_growth(
-            quarterly_income,
+            annual_income,
             ['Total Revenue', 'TotalRevenue', 'Revenue', 'Net Revenue']
         )
 
         # ── YoY % Change: Net Income ──────────────────────────────────────────
         ni_yoy = calc_yoy_growth(
-            quarterly_income,
+            annual_income,
             ['Net Income', 'NetIncome', 'Net profit', 'NetIncomeAvailabletoCommon']
         )
 
